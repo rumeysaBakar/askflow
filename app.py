@@ -199,12 +199,16 @@ def init_session_state():
     if "xper_level" not in st.session_state:
         st.session_state.xper_level = 5
 
+    if "rejected_by_agent" not in st.session_state:
+        st.session_state.rejected_by_agent = None
+
 
 def reset_pipeline():
     st.session_state.current_step = -1
     st.session_state.agent_outputs = {}
     st.session_state.pipeline_status = "idle"
     st.session_state.error_message = None
+    st.session_state.rejected_by_agent = None
 
 
 def start_pipeline(api_key, user_input, image_base64, image_mime, xper_level):
@@ -254,11 +258,47 @@ def run_next_agent():
         return
 
     st.session_state.agent_outputs[agent_name] = output
+    if st.session_state.rejected_by_agent is None:
+        if is_negative_decision(output):
+            st.session_state.rejected_by_agent = agent_name
+
     st.session_state.current_step = step + 1
 
     if st.session_state.current_step >= len(AGENT_NAMES):
         st.session_state.pipeline_status = "completed"
         save_current_result()
+
+def is_negative_decision(output_text: str) -> bool:
+    if not output_text:
+        return False
+
+    lowered = output_text.lower()
+
+    negative_signals = [
+        "reddedildi",
+        "kaldırıldı",
+        "silindi",
+        "yayınlanamaz",
+        "yayına alınamaz",
+        "uygun değildir",
+        "uygun değil",
+        "yasaya aykırı",
+        "ahlaka aykırı",
+
+        "kendine zarar",
+        "intihar"
+        "cinsellik",
+
+        "seviye gerektirmektedir",
+        "profil seviyenizi",
+        "erişim yetkiniz yok",
+        "yetkiniz bulunmamaktadır",
+        "daha fazla bilgi için",
+        "erişim kısıtı",
+        "sadece belirli seviyeler"
+    ]
+
+    return any(signal in lowered for signal in negative_signals)
 
 
 def save_current_result():
@@ -306,7 +346,13 @@ def render_agent_status():
         st.markdown(f":{color}[**{icon} {agent_name}**: {state}]")
 
     if status == "completed":
-        st.success("Pipeline tamamlandi!")
+        if st.session_state.rejected_by_agent:
+            st.error(
+                f"İçerik reddedildi. İlk red aldığı aşama: {st.session_state.rejected_by_agent}"
+            )
+        else:
+            st.success("İçerik yayınlanabilir")
+
     elif status == "error" and st.session_state.error_message:
         st.error(st.session_state.error_message)
 
