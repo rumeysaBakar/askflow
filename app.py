@@ -113,10 +113,14 @@ def call_openai_api(api_key, messages):
     return result["choices"][0]["message"]["content"]
 
 
-def run_single_agent(api_key, agent_name, prompt, user_input, previous_output, xper_level, image_base64=None,
-                     image_mime_type=None):
+def run_single_agent(api_key, agent_name, prompt, user_input, previous_output, xper_level,
+                     image_base64=None, image_mime_type=None):
+
     is_nudity_agent = agent_name == "Agent 3 - Nudity Control"
 
+    # -----------------------------
+    # USER CONTENT OLUŞTURMA
+    # -----------------------------
     if is_nudity_agent:
         if image_base64:
             user_content = "Bu gorevde SADECE yuklenen gorseli analiz et."
@@ -124,30 +128,32 @@ def run_single_agent(api_key, agent_name, prompt, user_input, previous_output, x
             user_content = "Bu istekte gorsel yok. Nudity kontrolu yapilamadi."
     else:
         if previous_output:
-            user_content = f"Onceki agent ciktisi:\n{previous_output}\n\nKullanici girdisi:\n{user_input}"
+            user_content = (
+                f"Onceki agent ciktisi:\n{previous_output}\n\n"
+                f"Kullanici girdisi:\n{user_input}"
+            )
         else:
             user_content = f"Kullanici girdisi:\n{user_input}"
 
+    # -----------------------------
+    # SYSTEM PROMPT
+    # -----------------------------
     xper_context = f"""
 XPER Seviyesi: {xper_level}/10
 XPER Seviye Aciklamasi: {XPER_LEVEL_DESCRIPTIONS[xper_level]}
 
-
 Bu XPER seviyesine ({xper_level}) uygun sekilde analiz yap ve karar ver.
 """
-
     system_message = f"{prompt}\n\n{xper_context}"
-
-    if previous_output:
-        user_content = f"Onceki agent ciktisi:\n{previous_output}\n\nKullanici girdisi:\n{user_input}"
-    else:
-        user_content = f"Kullanici girdisi:\n{user_input}"
 
     messages = [
         {"role": "system", "content": system_message}
     ]
 
-    if image_base64 and image_mime_type:
+    # -----------------------------
+    # SADECE NUDITY AGENT GÖRSEL ALIR
+    # -----------------------------
+    if is_nudity_agent and image_base64 and image_mime_type:
         user_message_content = [
             {"type": "text", "text": user_content},
             {
@@ -166,6 +172,7 @@ Bu XPER seviyesine ({xper_level}) uygun sekilde analiz yap ve karar ver.
         return result, None
     except Exception as e:
         return None, str(e)
+
 
 
 def init_session_state():
@@ -211,20 +218,26 @@ def reset_pipeline():
     st.session_state.rejected_by_agent = None
 
 
-def start_pipeline(api_key, user_input, image_base64, image_mime, xper_level):
-    st.session_state.api_key_saved = OPENAI_API_KEY
 
-    st.session_state.user_input_saved = user_input
-    st.session_state.image_data = image_base64
-    st.session_state.image_mime = image_mime
-    st.session_state.xper_level = xper_level
+def start_pipeline(api_key, user_input, image_base64, image_mime, xper_level):
     st.session_state.current_step = 0
     st.session_state.agent_outputs = {}
     st.session_state.pipeline_status = "running"
     st.session_state.error_message = None
+    st.session_state.rejected_by_agent = None
+
+    st.session_state.api_key_saved = api_key
+    st.session_state.user_input_saved = user_input
+    st.session_state.image_data = image_base64
+    st.session_state.image_mime = image_mime
+    st.session_state.xper_level = xper_level
+
 
 
 def run_next_agent():
+    if st.session_state.pipeline_status != "running":
+        return
+
     step = st.session_state.current_step
 
     if step >= len(AGENT_NAMES):
@@ -233,13 +246,25 @@ def run_next_agent():
         return
 
     agent_name = AGENT_NAMES[step]
+
+    # XPER Control SKIP
+    if agent_name == "Agent 1 - XPER Control" and st.session_state.xper_level > 1:
+        st.session_state.agent_outputs[agent_name] = (
+            f"XPER seviyesi {st.session_state.xper_level} seçildiği için "
+            "XPER Control agent çalıştırılmadı."
+        )
+        st.session_state.current_step += 1
+        return
+
     prompt = st.session_state.prompts.get(agent_name, DEFAULT_PROMPTS[agent_name])
 
+    # Previous output (skip-aware)
+    previous_output = None
     if step > 0:
         prev_agent = AGENT_NAMES[step - 1]
-        previous_output = st.session_state.agent_outputs.get(prev_agent, "")
-    else:
-        previous_output = None
+        prev_output = st.session_state.agent_outputs.get(prev_agent)
+        if prev_output and "çalıştırılmadı" not in prev_output:
+            previous_output = prev_output
 
     output, error = run_single_agent(
         api_key=st.session_state.api_key_saved,
@@ -258,15 +283,16 @@ def run_next_agent():
         return
 
     st.session_state.agent_outputs[agent_name] = output
-    if st.session_state.rejected_by_agent is None:
-        if is_negative_decision(output):
-            st.session_state.rejected_by_agent = agent_name
 
-    st.session_state.current_step = step + 1
+    if st.session_state.rejected_by_agent is None and is_negative_decision(output):
+        st.session_state.rejected_by_agent = agent_name
+
+    st.session_state.current_step += 1
 
     if st.session_state.current_step >= len(AGENT_NAMES):
         st.session_state.pipeline_status = "completed"
         save_current_result()
+
 
 def is_negative_decision(output_text: str) -> bool:
     if not output_text:
