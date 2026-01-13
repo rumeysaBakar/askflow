@@ -311,7 +311,7 @@ def is_negative_decision(output_text: str) -> bool:
         "yasaya aykırı",
         "ahlaka aykırı",
         "Hidden",
-        "[HIDDEN],
+        "[HIDDEN]",
         "remove",
         "[REMOVE]",
         "Uygunsuz Cinsel İçerik",
@@ -594,7 +594,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
