@@ -372,15 +372,19 @@ def render_agent_status():
         st.markdown(f":{color}[**{icon} {agent_name}**: {state}]")
 
     if status == "completed":
-        if st.session_state.rejected_by_agent:
+        rejection_agent = None
+        for agent_name in AGENT_NAMES:
+            output = st.session_state.agent_outputs.get(agent_name, "")
+            if output and "çalıştırılmadı" not in output and is_negative_decision(output):
+                rejection_agent = agent_name
+                break
+
+        if rejection_agent:
             st.error(
-                f"İçerik reddedildi. İlk red aldığı aşama: {st.session_state.rejected_by_agent}"
+                f"İçerik reddedildi. İlk red aldığı aşama: {rejection_agent}"
             )
         else:
             st.success("İçerik yayınlanabilir")
-
-    elif status == "error" and st.session_state.error_message:
-        st.error(st.session_state.error_message)
 
 
 def main():
