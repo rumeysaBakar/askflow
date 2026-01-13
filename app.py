@@ -301,37 +301,49 @@ def is_negative_decision(output_text: str) -> bool:
     lowered = output_text.lower()
 
     negative_signals = [
+        "sakıncalı",
+        "sakincali",
+        "hidden",
+        "[hidden]",
+        "remove",
+        "[remove]",
         "reddedildi",
         "kaldırıldı",
+        "kaldirildi",
         "silindi",
         "yayınlanamaz",
+        "yayinlanamaz",
         "yayına alınamaz",
+        "yayina alinamaz",
         "uygun değildir",
+        "uygun degildir",
         "uygun değil",
+        "uygun degil",
         "yasaya aykırı",
+        "yasaya aykiri",
         "ahlaka aykırı",
-        "Hidden",
-        "[HIDDEN]",
-        "remove",
-        "[REMOVE]",
-        "Uygunsuz Cinsel İçerik",
-        "Yasak İçerik",
-
+        "ahlaka aykiri",
+        "uygunsuz cinsel",
+        "yasak içerik",
+        "yasak icerik",
         "kendine zarar",
-        "intihar"
+        "intihar",
         "cinsellik",
-
         "seviye gerektirmektedir",
         "profil seviyenizi",
         "erişim yetkiniz yok",
+        "erisim yetkiniz yok",
         "yetkiniz bulunmamaktadır",
-        "daha fazla bilgi için",
+        "yetkiniz bulunmamaktadir",
         "erişim kısıtı",
-        "sadece belirli seviyeler"
+        "erisim kisiti",
+        "engellendi",
+        "uygunsuz",
+        "onaylanmadı",
+        "onaylanmadi",
     ]
 
     return any(signal in lowered for signal in negative_signals)
-
 
 def save_current_result():
     result_entry = {
@@ -378,15 +390,17 @@ def render_agent_status():
         st.markdown(f":{color}[**{icon} {agent_name}**: {state}]")
 
     if status == "completed":
-        if st.session_state.rejected_by_agent:
-            st.error(
-                f"İçerik reddedildi. İlk red aldığı aşama: {st.session_state.rejected_by_agent}"
-            )
+        rejection_agent = None
+        for agent_name in AGENT_NAMES:
+            output = st.session_state.agent_outputs.get(agent_name, "")
+            if output and "çalıştırılmadı" not in output and is_negative_decision(output):
+                rejection_agent = agent_name
+                break
+
+        if rejection_agent:
+            st.error(f"İçerik reddedildi. İlk red aldığı aşama: {rejection_agent}")
         else:
             st.success("İçerik yayınlanabilir")
-
-    elif status == "error" and st.session_state.error_message:
-        st.error(st.session_state.error_message)
 
 
 def main():
